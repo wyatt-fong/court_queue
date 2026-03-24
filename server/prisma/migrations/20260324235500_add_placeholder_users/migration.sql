@@ -1,3 +1,0 @@
-ALTER TABLE "User"
-ADD COLUMN "displayName" TEXT,
-ADD COLUMN "isPlaceholder" BOOLEAN NOT NULL DEFAULT false;
