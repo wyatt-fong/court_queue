@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: court-queue-api
+    runtime: node
+    rootDir: server
+    buildCommand: npm install && npm run prisma:generate && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+
