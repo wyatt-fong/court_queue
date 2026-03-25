@@ -1,0 +1,145 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", sans-serif;
+  background: #f5f0e6;
+  color: #1f241f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.page {
+  width: min(1100px, calc(100vw - 2rem));
+  margin: 0 auto;
+  padding: 2rem 0 3rem;
+}
+
+.hero {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1.5fr 1fr;
+  margin-bottom: 1rem;
+}
+
+.card {
+  background: #fffaf1;
+  border: 1px solid #ddd2be;
+  border-radius: 20px;
+  padding: 1rem;
+}
+
+.form-card,
+.admin {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.eyebrow,
+.subtle {
+  color: #5a6257;
+}
+
+.copy {
+  max-width: 42rem;
+}
+
+.status {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.notice,
+.error {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+}
+
+.notice {
+  background: #d9efe2;
+}
+
+.error {
+  background: #f7d7d2;
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.court-card {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.court-head,
+.queue-row,
+.admin-actions,
+.dummy-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-actions,
+.dummy-row {
+  justify-content: stretch;
+}
+
+.admin-actions button,
+.dummy-row button {
+  flex: 1;
+}
+
+.dummy-row input {
+  flex: 1.2;
+}
+
+.section h4,
+.section ul {
+  margin: 0;
+}
+
+.section ul {
+  padding-left: 1.2rem;
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.badge.active {
+  background: #d9efe2;
+}
+
+.badge.paused {
+  background: #f0dfb7;
+}
+
+@media (max-width: 760px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+}
+
