@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const emptyJoinForm = {
-  name: "",
   courtId: "",
 };
+
+const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
 
 async function apiRequest(path, init) {
   const response = await fetch(path, {
@@ -40,9 +41,13 @@ function formatCountdown(lastRotatedAt, rotationMinutes) {
 }
 
 export default function HomePage() {
+  const googleButtonRef = useRef(null);
+  const googleInitializedRef = useRef(false);
+  const [googleReady, setGoogleReady] = useState(false);
+  const [googleLoadError, setGoogleLoadError] = useState("");
+  const [user, setUser] = useState(null);
   const [courts, setCourts] = useState([]);
   const [joinForm, setJoinForm] = useState(emptyJoinForm);
-  const [adminPasscode, setAdminPasscode] = useState("");
   const [dummyNames, setDummyNames] = useState({});
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -54,11 +59,93 @@ export default function HomePage() {
     setCourts(data.courts);
   }
 
+  async function loadSession() {
+    const data = await apiRequest("/api/auth/me");
+    setUser(data.user);
+    return data.user;
+  }
+
   useEffect(() => {
-    loadCourts()
+    loadSession()
+      .then((sessionUser) => {
+        if (sessionUser) {
+          return loadCourts();
+        }
+
+        return null;
+      })
       .catch((requestError) => setError(requestError.message))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (user || !googleClientId) {
+      return;
+    }
+
+    if (window.google) {
+      setGoogleReady(true);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setGoogleReady(true);
+    script.onerror = () => setGoogleLoadError("Google sign-in script failed to load.");
+    document.head.appendChild(script);
+
+    return () => {
+      document.head.removeChild(script);
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!googleReady || !googleButtonRef.current || googleInitializedRef.current || user) {
+      return;
+    }
+
+    googleInitializedRef.current = true;
+    googleButtonRef.current.innerHTML = "";
+
+    window.google.accounts.id.initialize({
+      client_id: googleClientId,
+      callback: async (response) => {
+        if (!response.credential) {
+          setError("Google sign-in did not return a credential.");
+          return;
+        }
+
+        setBusy("google-sign-in");
+        setNotice("");
+        setError("");
+
+        try {
+          const data = await apiRequest("/api/auth/google", {
+            method: "POST",
+            body: JSON.stringify({ idToken: response.credential }),
+          });
+          setUser(data.user);
+          setNotice("Signed in.");
+          await loadCourts();
+        } catch (requestError) {
+          setError(requestError.message);
+        } finally {
+          setBusy("");
+        }
+      },
+      hd: "ucsd.edu",
+    });
+
+    window.google.accounts.id.renderButton(googleButtonRef.current, {
+      theme: "outline",
+      size: "large",
+      shape: "pill",
+      text: "signin_with",
+      width: 320,
+    });
+  }, [googleReady, user]);
 
   async function handleJoin(event) {
     event.preventDefault();
@@ -111,7 +198,6 @@ export default function HomePage() {
         body: JSON.stringify({
           courtId,
           action,
-          adminPasscode,
           name: dummyNames[courtId] || "",
         }),
       });
@@ -127,6 +213,28 @@ export default function HomePage() {
     }
   }
 
+  async function handleLogout() {
+    setBusy("logout");
+    setNotice("");
+    setError("");
+
+    try {
+      await apiRequest("/api/auth/logout", {
+        method: "POST",
+      });
+      window.google?.accounts.id.disableAutoSelect();
+      setUser(null);
+      setCourts([]);
+      googleInitializedRef.current = false;
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const isAdmin = Boolean(user?.isAdmin);
+
   return (
     <main className="page">
       <section className="hero">
@@ -134,64 +242,63 @@ export default function HomePage() {
           <p className="eyebrow">Badminton Club</p>
           <h1>Court Queue</h1>
           <p className="copy">
-            Enter a name, pick a court, and join. Admins can rotate courts and
-            add dummy players with a passcode.
+            Sign in with your UC San Diego Google account, pick a court, and join.
+            Admins can rotate courts and add dummy players.
           </p>
         </div>
 
-        <form className="card form-card" onSubmit={handleJoin}>
-          <h2>Join Queue</h2>
-          <label>
-            <span>Name</span>
-            <input
-              onChange={(event) =>
-                setJoinForm((current) => ({ ...current, name: event.target.value }))
-              }
-              placeholder="Wyatt"
-              required
-              value={joinForm.name}
-            />
-          </label>
-          <label>
-            <span>Court</span>
-            <select
-              onChange={(event) =>
-                setJoinForm((current) => ({ ...current, courtId: event.target.value }))
-              }
-              required
-              value={joinForm.courtId}
+        {!user ? (
+          <div className="card form-card">
+            <h2>Sign In</h2>
+            <p className="copy">
+              Only <strong>ucsd.edu</strong> Google Workspace accounts can use this app.
+            </p>
+            {googleClientId ? <div ref={googleButtonRef} /> : <p className="error">Missing Google client id.</p>}
+            {!googleReady && googleClientId ? <p className="notice">Loading Google sign-in...</p> : null}
+            {googleLoadError ? <p className="error">{googleLoadError}</p> : null}
+          </div>
+        ) : (
+          <form className="card form-card" onSubmit={handleJoin}>
+            <h2>Join Queue</h2>
+            <p className="copy">
+              Signed in as <strong>{user.displayName}</strong> ({user.email})
+            </p>
+            <label>
+              <span>Court</span>
+              <select
+                onChange={(event) =>
+                  setJoinForm((current) => ({ ...current, courtId: event.target.value }))
+                }
+                required
+                value={joinForm.courtId}
+              >
+                <option value="">Select a court</option>
+                {courts.map((court) => (
+                  <option key={court.id} value={court.id}>
+                    Court {court.number}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button disabled={busy === "join"} type="submit">
+              {busy === "join" ? "Joining..." : "Join"}
+            </button>
+            <button
+              className="secondary-button"
+              disabled={busy === "logout"}
+              onClick={handleLogout}
+              type="button"
             >
-              <option value="">Select a court</option>
-              {courts.map((court) => (
-                <option key={court.id} value={court.id}>
-                  Court {court.number}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button disabled={busy === "join"} type="submit">
-            {busy === "join" ? "Joining..." : "Join"}
-          </button>
-        </form>
+              {busy === "logout" ? "Signing out..." : "Sign Out"}
+            </button>
+          </form>
+        )}
       </section>
 
       <section className="status">
         {loading ? <p>Loading courts...</p> : null}
         {notice ? <p className="notice">{notice}</p> : null}
         {error ? <p className="error">{error}</p> : null}
-      </section>
-
-      <section className="admin card">
-        <h2>Admin</h2>
-        <label>
-          <span>Passcode</span>
-          <input
-            onChange={(event) => setAdminPasscode(event.target.value)}
-            placeholder="Admin passcode"
-            type="password"
-            value={adminPasscode}
-          />
-        </label>
       </section>
 
       <section className="grid">
@@ -226,13 +333,15 @@ export default function HomePage() {
                   court.queue.map((player) => (
                     <li className="queue-row" key={player.id}>
                       <span>{player.name}</span>
-                      <button
-                        disabled={busy === `leave-${player.id}`}
-                        onClick={() => handleLeave(court.id, player.id)}
-                        type="button"
-                      >
-                        Remove
-                      </button>
+                      {isAdmin || user?.id === player.id ? (
+                        <button
+                          disabled={busy === `leave-${player.id}`}
+                          onClick={() => handleLeave(court.id, isAdmin ? player.id : undefined)}
+                          type="button"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
                     </li>
                   ))
                 ) : (
@@ -241,43 +350,46 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div className="admin-actions">
-              <button
-                disabled={busy === `rotate-${court.id}`}
-                onClick={() => handleAdminAction(court.id, "rotate")}
-                type="button"
-              >
-                Rotate Now
-              </button>
-              <button
-                disabled={busy === `toggle_pause-${court.id}`}
-                onClick={() => handleAdminAction(court.id, "toggle_pause")}
-                type="button"
-              >
-                {court.paused ? "Resume" : "Pause"}
-              </button>
-            </div>
+            {isAdmin ? (
+              <div className="admin-actions">
+                <button
+                  disabled={busy === `rotate-${court.id}`}
+                  onClick={() => handleAdminAction(court.id, "rotate")}
+                  type="button"
+                >
+                  Rotate Now
+                </button>
+                <button
+                  disabled={busy === `toggle_pause-${court.id}`}
+                  onClick={() => handleAdminAction(court.id, "toggle_pause")}
+                  type="button"
+                >
+                  {court.paused ? "Resume" : "Pause"}
+                </button>
+              </div>
+            ) : null}
 
-            <div className="dummy-row">
-              <input
-                onChange={(event) =>
-                  setDummyNames((current) => ({ ...current, [court.id]: event.target.value }))
-                }
-                placeholder="Dummy player name"
-                value={dummyNames[court.id] || ""}
-              />
-              <button
-                disabled={busy === `add_dummy-${court.id}`}
-                onClick={() => handleAdminAction(court.id, "add_dummy")}
-                type="button"
-              >
-                Add Dummy
-              </button>
-            </div>
+            {isAdmin ? (
+              <div className="dummy-row">
+                <input
+                  onChange={(event) =>
+                    setDummyNames((current) => ({ ...current, [court.id]: event.target.value }))
+                  }
+                  placeholder="Dummy player name"
+                  value={dummyNames[court.id] || ""}
+                />
+                <button
+                  disabled={busy === `add_dummy-${court.id}`}
+                  onClick={() => handleAdminAction(court.id, "add_dummy")}
+                  type="button"
+                >
+                  Add Dummy
+                </button>
+              </div>
+            ) : null}
           </article>
         ))}
       </section>
     </main>
   );
 }
-

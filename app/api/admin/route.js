@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
-import { config } from "../../../lib/config";
+import { requireAdminUser } from "../../../lib/auth";
 import { adminAddDummy, adminRotateCourt, adminTogglePause } from "../../../lib/courts";
 
 export async function POST(request) {
   try {
-    const { adminPasscode, action, courtId, name } = await request.json();
-
-    if (!config.adminPasscode || adminPasscode !== config.adminPasscode) {
-      return NextResponse.json({ error: "Invalid admin passcode." }, { status: 401 });
-    }
+    const { action, courtId, name } = await request.json();
+    await requireAdminUser();
 
     if (action === "rotate") {
       await adminRotateCourt(courtId);

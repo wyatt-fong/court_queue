@@ -7,14 +7,14 @@ Simple badminton court queue app.
 - One Next.js app
 - One database
 - No background worker
-- No Google auth
-- Admin passcode for admin actions
+- Google Workspace sign-in for all users
+- Admins granted by allowlisted emails
 
 ## Core behavior
 
 - 10 courts
 - 4 players per court
-- Players enter a name and join one court queue
+- Signed-in members join one court queue
 - Courts rotate when enough time has passed and someone loads or changes data
 - Admins can rotate a court immediately and add dummy players
 
@@ -38,7 +38,11 @@ cp .env.example .env.local
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `ADMIN_PASSCODE`
+- `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_ID`
+- `ALLOWED_EMAIL_DOMAIN`
+- `ADMIN_EMAILS`
+- `JWT_SECRET`
 
 5. Run:
 
@@ -51,4 +55,3 @@ npm run dev
 - Deploy this repo directly to Vercel
 - Add the same env vars in Vercel
 - Use Supabase as the hosted database
-

@@ -23,6 +23,11 @@ button {
   cursor: pointer;
 }
 
+.secondary-button {
+  background: transparent;
+  border: 1px solid #cfc5b7;
+}
+
 .page {
   width: min(1100px, calc(100vw - 2rem));
   margin: 0 auto;
@@ -142,4 +147,3 @@ button {
     grid-template-columns: 1fr;
   }
 }
-
