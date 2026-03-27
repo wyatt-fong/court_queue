@@ -2,10 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const emptyJoinForm = {
-  courtId: "",
-};
-
 const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
 
 async function apiRequest(path, init) {
@@ -47,8 +43,8 @@ export default function HomePage() {
   const [googleLoadError, setGoogleLoadError] = useState("");
   const [user, setUser] = useState(null);
   const [courts, setCourts] = useState([]);
-  const [joinForm, setJoinForm] = useState(emptyJoinForm);
   const [dummyNames, setDummyNames] = useState({});
+  const [adminMode, setAdminMode] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -147,18 +143,16 @@ export default function HomePage() {
     });
   }, [googleReady, user]);
 
-  async function handleJoin(event) {
-    event.preventDefault();
-    setBusy("join");
+  async function handleJoin(courtId) {
+    setBusy(`join-${courtId}`);
     setNotice("");
     setError("");
 
     try {
       await apiRequest("/api/join", {
         method: "POST",
-        body: JSON.stringify(joinForm),
+        body: JSON.stringify({ courtId }),
       });
-      setJoinForm(emptyJoinForm);
       setNotice("Joined queue.");
       await loadCourts();
     } catch (requestError) {
@@ -225,6 +219,7 @@ export default function HomePage() {
       window.google?.accounts.id.disableAutoSelect();
       setUser(null);
       setCourts([]);
+      setAdminMode(false);
       googleInitializedRef.current = false;
     } catch (requestError) {
       setError(requestError.message);
@@ -234,6 +229,7 @@ export default function HomePage() {
   }
 
   const isAdmin = Boolean(user?.isAdmin);
+  const adminControlsEnabled = isAdmin && adminMode;
 
   return (
     <main className="page">
@@ -258,31 +254,24 @@ export default function HomePage() {
             {googleLoadError ? <p className="error">{googleLoadError}</p> : null}
           </div>
         ) : (
-          <form className="card form-card" onSubmit={handleJoin}>
-            <h2>Join Queue</h2>
+          <div className="card form-card">
+            <h2>Signed In</h2>
             <p className="copy">
               Signed in as <strong>{user.displayName}</strong> ({user.email})
             </p>
-            <label>
-              <span>Court</span>
-              <select
-                onChange={(event) =>
-                  setJoinForm((current) => ({ ...current, courtId: event.target.value }))
-                }
-                required
-                value={joinForm.courtId}
-              >
-                <option value="">Select a court</option>
-                {courts.map((court) => (
-                  <option key={court.id} value={court.id}>
-                    Court {court.number}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button disabled={busy === "join"} type="submit">
-              {busy === "join" ? "Joining..." : "Join"}
-            </button>
+            <p className="copy">Use the button on any court card to join that court’s queue.</p>
+            {isAdmin ? (
+              <label className="admin-toggle">
+                <span>Admin mode</span>
+                <button
+                  className="secondary-button"
+                  onClick={() => setAdminMode((current) => !current)}
+                  type="button"
+                >
+                  {adminMode ? "On" : "Off"}
+                </button>
+              </label>
+            ) : null}
             <button
               className="secondary-button"
               disabled={busy === "logout"}
@@ -291,7 +280,7 @@ export default function HomePage() {
             >
               {busy === "logout" ? "Signing out..." : "Sign Out"}
             </button>
-          </form>
+          </div>
         )}
       </section>
 
@@ -333,10 +322,15 @@ export default function HomePage() {
                   court.queue.map((player) => (
                     <li className="queue-row" key={player.id}>
                       <span>{player.name}</span>
-                      {isAdmin || user?.id === player.id ? (
+                      {adminControlsEnabled || user?.id === player.id ? (
                         <button
                           disabled={busy === `leave-${player.id}`}
-                          onClick={() => handleLeave(court.id, isAdmin ? player.id : undefined)}
+                          onClick={() =>
+                            handleLeave(
+                              court.id,
+                              adminControlsEnabled ? player.id : undefined,
+                            )
+                          }
                           type="button"
                         >
                           Remove
@@ -350,7 +344,17 @@ export default function HomePage() {
               </ul>
             </div>
 
-            {isAdmin ? (
+            {user ? (
+              <button
+                disabled={busy === `join-${court.id}`}
+                onClick={() => handleJoin(court.id)}
+                type="button"
+              >
+                {busy === `join-${court.id}` ? "Joining..." : `Queue For Court ${court.number}`}
+              </button>
+            ) : null}
+
+            {adminControlsEnabled ? (
               <div className="admin-actions">
                 <button
                   disabled={busy === `rotate-${court.id}`}
@@ -369,7 +373,7 @@ export default function HomePage() {
               </div>
             ) : null}
 
-            {isAdmin ? (
+            {adminControlsEnabled ? (
               <div className="dummy-row">
                 <input
                   onChange={(event) =>

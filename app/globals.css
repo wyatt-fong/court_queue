@@ -98,7 +98,8 @@ button {
 .court-head,
 .queue-row,
 .admin-actions,
-.dummy-row {
+.dummy-row,
+.admin-toggle {
   display: flex;
   gap: 0.5rem;
   align-items: center;
