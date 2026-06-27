@@ -19,6 +19,7 @@ export async function POST(request) {
         email: user.email,
         displayName: user.display_name,
         isAdmin: user.is_admin,
+        isDemo: false,
       },
     });
   } catch (error) {

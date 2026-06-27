@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+const demoAccounts = ["p1", "p2", "p3", "p4"];
 
 async function apiRequest(path, init) {
   const response = await fetch(path, {
@@ -41,6 +42,7 @@ export default function HomePage() {
   const googleInitializedRef = useRef(false);
   const [googleReady, setGoogleReady] = useState(false);
   const [googleLoadError, setGoogleLoadError] = useState("");
+  const [demoCredentials, setDemoCredentials] = useState({ username: "p1", password: "p1" });
   const [user, setUser] = useState(null);
   const [courts, setCourts] = useState([]);
   const [dummyNames, setDummyNames] = useState({});
@@ -144,6 +146,8 @@ export default function HomePage() {
   }, [googleReady, user]);
 
   async function handleJoin(courtId) {
+    // TODO(party-slots): Replace this legacy flat-player join with
+    // POST /api/courts/:courtId/parties for "Join End of Queue".
     setBusy(`join-${courtId}`);
     setNotice("");
     setError("");
@@ -162,7 +166,30 @@ export default function HomePage() {
     }
   }
 
+  async function handleDemoLogin(event) {
+    event.preventDefault();
+    setBusy("demo-sign-in");
+    setNotice("");
+    setError("");
+
+    try {
+      const data = await apiRequest("/api/auth/demo", {
+        method: "POST",
+        body: JSON.stringify(demoCredentials),
+      });
+      setUser(data.user);
+      setNotice("Signed in with demo account.");
+      await loadCourts();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function handleLeave(courtId, playerId) {
+    // TODO(party-slots): Replace this legacy player removal with party-aware leave:
+    // POST /api/parties/:partyId/leave for queued/active party membership.
     setBusy(`leave-${playerId}`);
     setNotice("");
     setError("");
@@ -182,6 +209,8 @@ export default function HomePage() {
   }
 
   async function handleAdminAction(courtId, action) {
+    // TODO(party-slots): Keep rotate/pause here, but add admin actions for canceling
+    // queued parties, clearing active courts, and removing party members.
     setBusy(`${action}-${courtId}`);
     setNotice("");
     setError("");
@@ -246,12 +275,50 @@ export default function HomePage() {
         {!user ? (
           <div className="card form-card">
             <h2>Sign In</h2>
-            <p className="copy">
-              Only <strong>ucsd.edu</strong> Google Workspace accounts can use this app.
+            <form className="demo-login" onSubmit={handleDemoLogin}>
+              <label>
+                Username
+                <input
+                  autoComplete="username"
+                  onChange={(event) =>
+                    setDemoCredentials((current) => ({
+                      ...current,
+                      username: event.target.value,
+                    }))
+                  }
+                  value={demoCredentials.username}
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  autoComplete="current-password"
+                  onChange={(event) =>
+                    setDemoCredentials((current) => ({
+                      ...current,
+                      password: event.target.value,
+                    }))
+                  }
+                  type="password"
+                  value={demoCredentials.password}
+                />
+              </label>
+              <button disabled={busy === "demo-sign-in"} type="submit">
+                {busy === "demo-sign-in" ? "Signing in..." : "Sign In"}
+              </button>
+            </form>
+            <p className="subtle">
+              Demo accounts: {demoAccounts.map((account) => `${account}/${account}`).join(", ")}.
+              Player 1 is an admin.
             </p>
-            {googleClientId ? <div ref={googleButtonRef} /> : <p className="error">Missing Google client id.</p>}
-            {!googleReady && googleClientId ? <p className="notice">Loading Google sign-in...</p> : null}
-            {googleLoadError ? <p className="error">{googleLoadError}</p> : null}
+            {googleClientId ? (
+              <>
+                <div className="divider">or</div>
+                <div ref={googleButtonRef} />
+                {!googleReady ? <p className="notice">Loading Google sign-in...</p> : null}
+                {googleLoadError ? <p className="error">{googleLoadError}</p> : null}
+              </>
+            ) : null}
           </div>
         ) : (
           <div className="card form-card">
@@ -306,6 +373,8 @@ export default function HomePage() {
 
             <div className="section">
               <h4>Playing</h4>
+              {/* TODO(party-slots): Render court.activeParty.members, activeOpenSlots,
+                  and a Join Active Court button when canJoinActiveCourt is true. */}
               <ul>
                 {court.current_players.length ? (
                   court.current_players.map((player) => <li key={player.id}>{player.name}</li>)
@@ -317,6 +386,8 @@ export default function HomePage() {
 
             <div className="section">
               <h4>Queue</h4>
+              {/* TODO(party-slots): Render court.queuedParties as grouped party rows
+                  with member names, count like 2/4, Join Party, Leave, and Cancel. */}
               <ul>
                 {court.queue.length ? (
                   court.queue.map((player) => (
@@ -345,6 +416,8 @@ export default function HomePage() {
             </div>
 
             {user ? (
+              // TODO(party-slots): Rename this to "Join End of Queue" and point it at
+              // POST /api/courts/:courtId/parties.
               <button
                 disabled={busy === `join-${court.id}`}
                 onClick={() => handleJoin(court.id)}

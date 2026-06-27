@@ -54,6 +54,45 @@ button {
   gap: 0.75rem;
 }
 
+.demo-login {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.demo-login label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.demo-login input {
+  border: 1px solid #cfc5b7;
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+}
+
+.demo-login button {
+  border: 0;
+  border-radius: 10px;
+  background: #1f241f;
+  color: #fffaf1;
+  padding: 0.7rem 0.9rem;
+}
+
+.divider {
+  align-items: center;
+  color: #5a6257;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.divider::before,
+.divider::after {
+  background: #ddd2be;
+  content: "";
+  flex: 1;
+  height: 1px;
+}
+
 .eyebrow,
 .subtle {
   color: #5a6257;

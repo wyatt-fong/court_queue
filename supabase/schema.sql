@@ -21,6 +21,28 @@ create table if not exists public.courts (
   created_at timestamptz not null default now()
 );
 
+-- TODO(party-slots): Replace the courts.current_players/courts.queue jsonb model with:
+-- - public.court_parties:
+--   id uuid primary key
+--   court_id uuid references public.courts(id) on delete cascade
+--   status text check (status in ('queued', 'active', 'canceled'))
+--   position integer nullable for active/canceled parties
+--   created_by uuid references public.users(id)
+--   created_at timestamptz default now()
+--   activated_at timestamptz nullable
+-- - public.court_party_members:
+--   id uuid primary key
+--   party_id uuid references public.court_parties(id) on delete cascade
+--   user_id uuid references public.users(id)
+--   display_name text not null
+--   joined_at timestamptz default now()
+--   joined_order integer not null
+-- Add indexes/constraints after the exact migration path is decided:
+-- - max 4 members per non-canceled party
+-- - one active/queued membership per user across all courts
+-- - one active party per court
+-- - ordered queued parties per court
+
 insert into public.courts (number)
 select number_value
 from generate_series(1, 10) as number_value

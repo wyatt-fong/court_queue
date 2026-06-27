@@ -14,6 +14,7 @@ export async function GET() {
       email: user.email,
       displayName: user.display_name,
       isAdmin: user.is_admin,
+      isDemo: Boolean(user.is_demo),
     },
   });
 }
