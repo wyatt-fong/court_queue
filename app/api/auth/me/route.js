@@ -12,9 +12,8 @@ export async function GET() {
     user: {
       id: user.id,
       email: user.email,
-      displayName: user.display_name,
-      isAdmin: user.is_admin,
-      isDemo: Boolean(user.is_demo),
-    },
+        displayName: user.display_name,
+        isAdmin: user.is_admin,
+      },
   });
 }

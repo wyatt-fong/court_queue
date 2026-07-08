@@ -1,16 +1,21 @@
 import { NextResponse } from "next/server";
-import { reconcileAndSaveCourts } from "../../../lib/courts";
 import { requireSessionUser } from "../../../lib/auth";
-import { fetchDemoCourts } from "../../../lib/demo-courts";
+import {
+  fetchPartyCourtsForUser,
+  rotateDuePartyCourts,
+} from "../../../lib/party-courts";
 
-export async function GET() {
+export async function GET(request) {
   try {
     const user = await requireSessionUser();
-    // TODO(party-slots): Replace this legacy flat queue response with
-    // fetchPartyCourtsForUser(user), including activeParty and queuedParties.
-    const courts = user.is_demo ? fetchDemoCourts() : await reconcileAndSaveCourts();
-    return NextResponse.json({ courts });
+    const gym = request.nextUrl.searchParams.get("gym") || "MAIN";
+
+    await rotateDuePartyCourts();
+    const result = await fetchPartyCourtsForUser(user, gym);
+
+    return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 401 });
+    const status = error.message === "Authentication required." ? 401 : 400;
+    return NextResponse.json({ error: error.message }, { status });
   }
 }

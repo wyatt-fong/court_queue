@@ -6,7 +6,6 @@ Simple badminton court queue app.
 
 - One Next.js app
 - One database
-- No background worker
 - Google Workspace sign-in for all users
 - Admins granted by allowlisted emails
 
@@ -14,9 +13,10 @@ Simple badminton court queue app.
 
 - 10 courts
 - 4 players per court
-- Signed-in members join one court queue
-- Courts rotate when enough time has passed and someone loads or changes data
-- Admins can rotate a court immediately and add dummy players
+- Signed-in members create or join parties of up to four players
+- Members may switch queued parties without leaving first
+- Courts rotate transactionally when enough time has passed
+- Admins can rotate, pause, remove members, and delete parties
 
 ## Local setup
 
@@ -32,7 +32,12 @@ npm install
 cp .env.example .env.local
 ```
 
-3. Create a Supabase project and run the SQL in [supabase/schema.sql](/Users/wyattfong/Projects/court_queue/supabase/schema.sql).
+3. Create a Supabase project, link it with the Supabase CLI, and apply all migrations:
+
+```bash
+supabase link --project-ref YOUR_PROJECT_REF
+supabase db push
+```
 
 4. Fill in:
 

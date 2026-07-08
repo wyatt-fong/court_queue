@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 
 const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
-const demoAccounts = ["p1", "p2", "p3", "p4"];
 
 async function apiRequest(path, init) {
   const response = await fetch(path, {
@@ -13,7 +12,6 @@ async function apiRequest(path, init) {
       ...(init?.headers ?? {}),
     },
   });
-
   const body = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -24,66 +22,75 @@ async function apiRequest(path, init) {
 }
 
 function formatCountdown(lastRotatedAt, rotationMinutes) {
-  const last = new Date(lastRotatedAt).getTime();
-  const next = last + rotationMinutes * 60 * 1000;
-  const diff = next - Date.now();
+  const nextRotation = new Date(lastRotatedAt).getTime() + rotationMinutes * 60 * 1000;
+  const difference = nextRotation - Date.now();
 
-  if (diff <= 0) {
-    return "Ready to rotate";
-  }
+  if (difference <= 0) return "Ready";
 
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+  const seconds = Math.floor(difference / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 export default function HomePage() {
   const googleButtonRef = useRef(null);
   const googleInitializedRef = useRef(false);
   const [googleReady, setGoogleReady] = useState(false);
-  const [googleLoadError, setGoogleLoadError] = useState("");
-  const [demoCredentials, setDemoCredentials] = useState({ username: "p1", password: "p1" });
   const [user, setUser] = useState(null);
+  const [gym, setGym] = useState("MAIN");
   const [courts, setCourts] = useState([]);
-  const [dummyNames, setDummyNames] = useState({});
   const [adminMode, setAdminMode] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
 
-  async function loadCourts() {
-    const data = await apiRequest("/api/courts");
+  async function loadCourts(nextGym = gym) {
+    const data = await apiRequest(`/api/courts?gym=${nextGym}`);
     setCourts(data.courts);
   }
 
-  async function loadSession() {
-    const data = await apiRequest("/api/auth/me");
-    setUser(data.user);
-    return data.user;
+  async function refreshAfter(action, message, operation) {
+    setBusy(action);
+    setNotice("");
+    setError("");
+
+    try {
+      await operation();
+      setNotice(message);
+      await loadCourts();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy("");
+    }
   }
 
   useEffect(() => {
-    loadSession()
-      .then((sessionUser) => {
-        if (sessionUser) {
-          return loadCourts();
-        }
-
-        return null;
+    apiRequest("/api/auth/me")
+      .then(async ({ user: sessionUser }) => {
+        setUser(sessionUser);
+        if (sessionUser) await loadCourts("MAIN");
       })
       .catch((requestError) => setError(requestError.message))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
-    if (user || !googleClientId) {
-      return;
-    }
+    if (!user) return undefined;
 
+    loadCourts(gym).catch((requestError) => setError(requestError.message));
+    const interval = window.setInterval(() => {
+      loadCourts(gym).catch(() => {});
+    }, 10000);
+
+    return () => window.clearInterval(interval);
+  }, [gym, user]);
+
+  useEffect(() => {
+    if (user || !googleClientId) return undefined;
     if (window.google) {
       setGoogleReady(true);
-      return;
+      return undefined;
     }
 
     const script = document.createElement("script");
@@ -91,12 +98,10 @@ export default function HomePage() {
     script.async = true;
     script.defer = true;
     script.onload = () => setGoogleReady(true);
-    script.onerror = () => setGoogleLoadError("Google sign-in script failed to load.");
+    script.onerror = () => setError("Google sign-in failed to load.");
     document.head.appendChild(script);
 
-    return () => {
-      document.head.removeChild(script);
-    };
+    return () => script.remove();
   }, [user]);
 
   useEffect(() => {
@@ -105,146 +110,86 @@ export default function HomePage() {
     }
 
     googleInitializedRef.current = true;
-    googleButtonRef.current.innerHTML = "";
-
     window.google.accounts.id.initialize({
       client_id: googleClientId,
-      callback: async (response) => {
-        if (!response.credential) {
-          setError("Google sign-in did not return a credential.");
-          return;
-        }
+      hd: "ucsd.edu",
+      callback: async ({ credential }) => {
+        if (!credential) return;
 
-        setBusy("google-sign-in");
-        setNotice("");
+        setBusy("sign-in");
         setError("");
-
         try {
           const data = await apiRequest("/api/auth/google", {
             method: "POST",
-            body: JSON.stringify({ idToken: response.credential }),
+            body: JSON.stringify({ idToken: credential }),
           });
           setUser(data.user);
           setNotice("Signed in.");
-          await loadCourts();
+          await loadCourts("MAIN");
         } catch (requestError) {
           setError(requestError.message);
         } finally {
           setBusy("");
         }
       },
-      hd: "ucsd.edu",
     });
-
     window.google.accounts.id.renderButton(googleButtonRef.current, {
       theme: "outline",
       size: "large",
-      shape: "pill",
       text: "signin_with",
-      width: 320,
+      width: 300,
     });
   }, [googleReady, user]);
 
-  async function handleJoin(courtId) {
-    // TODO(party-slots): Replace this legacy flat-player join with
-    // POST /api/courts/:courtId/parties for "Join End of Queue".
-    setBusy(`join-${courtId}`);
-    setNotice("");
-    setError("");
-
-    try {
-      await apiRequest("/api/join", {
-        method: "POST",
-        body: JSON.stringify({ courtId }),
-      });
-      setNotice("Joined queue.");
-      await loadCourts();
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function handleDemoLogin(event) {
-    event.preventDefault();
-    setBusy("demo-sign-in");
-    setNotice("");
-    setError("");
-
-    try {
-      const data = await apiRequest("/api/auth/demo", {
-        method: "POST",
-        body: JSON.stringify(demoCredentials),
-      });
-      setUser(data.user);
-      setNotice("Signed in with demo account.");
-      await loadCourts();
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function handleLeave(courtId, playerId) {
-    // TODO(party-slots): Replace this legacy player removal with party-aware leave:
-    // POST /api/parties/:partyId/leave for queued/active party membership.
-    setBusy(`leave-${playerId}`);
-    setNotice("");
-    setError("");
-
-    try {
-      await apiRequest("/api/leave", {
-        method: "POST",
-        body: JSON.stringify({ courtId, playerId }),
-      });
-      setNotice("Removed from queue.");
-      await loadCourts();
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function handleAdminAction(courtId, action) {
-    // TODO(party-slots): Keep rotate/pause here, but add admin actions for canceling
-    // queued parties, clearing active courts, and removing party members.
-    setBusy(`${action}-${courtId}`);
-    setNotice("");
-    setError("");
-
-    try {
-      await apiRequest("/api/admin", {
-        method: "POST",
-        body: JSON.stringify({
-          courtId,
-          action,
-          name: dummyNames[courtId] || "",
+  async function createParty(court) {
+    await refreshAfter(
+      `create-${court.id}`,
+      court.canSwitchToNewParty ? "Switched queues." : "Joined the queue.",
+      () =>
+        apiRequest(`/api/courts/${court.id}/parties`, {
+          method: "POST",
+          body: JSON.stringify({ switchQueue: court.canSwitchToNewParty }),
         }),
-      });
-      if (action === "add_dummy") {
-        setDummyNames((current) => ({ ...current, [courtId]: "" }));
-      }
-      setNotice("Admin action completed.");
-      await loadCourts();
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setBusy("");
-    }
+    );
   }
 
-  async function handleLogout() {
-    setBusy("logout");
-    setNotice("");
-    setError("");
+  async function joinParty(party) {
+    await refreshAfter(
+      `join-${party.id}`,
+      party.canSwitchToParty ? "Switched parties." : "Joined party.",
+      () =>
+        apiRequest(`/api/parties/${party.id}/join`, {
+          method: "POST",
+          body: JSON.stringify({ switchQueue: party.canSwitchToParty }),
+        }),
+    );
+  }
 
-    try {
-      await apiRequest("/api/auth/logout", {
+  async function joinActive(court) {
+    await refreshAfter(`active-${court.id}`, "Joined active court.", () =>
+      apiRequest(`/api/courts/${court.id}/join-active`, { method: "POST" }),
+    );
+  }
+
+  async function leaveParty(partyId) {
+    await refreshAfter(`leave-${partyId}`, "Left party.", () =>
+      apiRequest(`/api/parties/${partyId}/leave`, { method: "POST" }),
+    );
+  }
+
+  async function adminAction(action, values) {
+    await refreshAfter(`${action}-${values.partyId || values.courtId}`, "Admin action completed.", () =>
+      apiRequest("/api/admin", {
         method: "POST",
-      });
+        body: JSON.stringify({ action, ...values }),
+      }),
+    );
+  }
+
+  async function logout() {
+    setBusy("logout");
+    try {
+      await apiRequest("/api/auth/logout", { method: "POST" });
       window.google?.accounts.id.disableAutoSelect();
       setUser(null);
       setCourts([]);
@@ -257,216 +202,266 @@ export default function HomePage() {
     }
   }
 
-  const isAdmin = Boolean(user?.isAdmin);
-  const adminControlsEnabled = isAdmin && adminMode;
+  const adminEnabled = Boolean(user?.isAdmin && adminMode);
 
   return (
     <main className="page">
-      <section className="hero">
+      <header className="app-header">
         <div>
           <p className="eyebrow">Badminton Club</p>
           <h1>Court Queue</h1>
-          <p className="copy">
-            Sign in with your UC San Diego Google account, pick a court, and join.
-            Admins can rotate courts and add dummy players.
-          </p>
         </div>
-
-        {!user ? (
-          <div className="card form-card">
-            <h2>Sign In</h2>
-            <form className="demo-login" onSubmit={handleDemoLogin}>
-              <label>
-                Username
-                <input
-                  autoComplete="username"
-                  onChange={(event) =>
-                    setDemoCredentials((current) => ({
-                      ...current,
-                      username: event.target.value,
-                    }))
-                  }
-                  value={demoCredentials.username}
-                />
-              </label>
-              <label>
-                Password
-                <input
-                  autoComplete="current-password"
-                  onChange={(event) =>
-                    setDemoCredentials((current) => ({
-                      ...current,
-                      password: event.target.value,
-                    }))
-                  }
-                  type="password"
-                  value={demoCredentials.password}
-                />
-              </label>
-              <button disabled={busy === "demo-sign-in"} type="submit">
-                {busy === "demo-sign-in" ? "Signing in..." : "Sign In"}
-              </button>
-            </form>
-            <p className="subtle">
-              Demo accounts: {demoAccounts.map((account) => `${account}/${account}`).join(", ")}.
-              Player 1 is an admin.
-            </p>
-            {googleClientId ? (
-              <>
-                <div className="divider">or</div>
-                <div ref={googleButtonRef} />
-                {!googleReady ? <p className="notice">Loading Google sign-in...</p> : null}
-                {googleLoadError ? <p className="error">{googleLoadError}</p> : null}
-              </>
-            ) : null}
-          </div>
-        ) : (
-          <div className="card form-card">
-            <h2>Signed In</h2>
-            <p className="copy">
-              Signed in as <strong>{user.displayName}</strong> ({user.email})
-            </p>
-            <p className="copy">Use the button on any court card to join that court’s queue.</p>
-            {isAdmin ? (
+        {user ? (
+          <div className="session-actions">
+            <span>{user.displayName}</span>
+            {user.isAdmin ? (
               <label className="admin-toggle">
-                <span>Admin mode</span>
-                <button
-                  className="secondary-button"
-                  onClick={() => setAdminMode((current) => !current)}
-                  type="button"
-                >
-                  {adminMode ? "On" : "Off"}
-                </button>
+                <input
+                  checked={adminMode}
+                  onChange={(event) => setAdminMode(event.target.checked)}
+                  type="checkbox"
+                />
+                Admin
               </label>
             ) : null}
-            <button
-              className="secondary-button"
-              disabled={busy === "logout"}
-              onClick={handleLogout}
-              type="button"
-            >
-              {busy === "logout" ? "Signing out..." : "Sign Out"}
+            <button className="secondary-button" disabled={busy === "logout"} onClick={logout}>
+              Sign out
             </button>
           </div>
-        )}
-      </section>
+        ) : null}
+      </header>
 
-      <section className="status">
-        {loading ? <p>Loading courts...</p> : null}
-        {notice ? <p className="notice">{notice}</p> : null}
-        {error ? <p className="error">{error}</p> : null}
-      </section>
-
-      <section className="grid">
-        {courts.map((court) => (
-          <article className="card court-card" key={court.id}>
-            <div className="court-head">
-              <h3>Court {court.number}</h3>
-              <span className={`badge ${court.paused ? "paused" : "active"}`}>
-                {court.paused ? "paused" : "active"}
-              </span>
-            </div>
-
-            <p className="subtle">
-              Rotation in {formatCountdown(court.last_rotated_at, court.rotation_minutes)}
-            </p>
-
-            <div className="section">
-              <h4>Playing</h4>
-              {/* TODO(party-slots): Render court.activeParty.members, activeOpenSlots,
-                  and a Join Active Court button when canJoinActiveCourt is true. */}
-              <ul>
-                {court.current_players.length ? (
-                  court.current_players.map((player) => <li key={player.id}>{player.name}</li>)
-                ) : (
-                  <li>Open court</li>
-                )}
-              </ul>
-            </div>
-
-            <div className="section">
-              <h4>Queue</h4>
-              {/* TODO(party-slots): Render court.queuedParties as grouped party rows
-                  with member names, count like 2/4, Join Party, Leave, and Cancel. */}
-              <ul>
-                {court.queue.length ? (
-                  court.queue.map((player) => (
-                    <li className="queue-row" key={player.id}>
-                      <span>{player.name}</span>
-                      {adminControlsEnabled || user?.id === player.id ? (
-                        <button
-                          disabled={busy === `leave-${player.id}`}
-                          onClick={() =>
-                            handleLeave(
-                              court.id,
-                              adminControlsEnabled ? player.id : undefined,
-                            )
-                          }
-                          type="button"
-                        >
-                          Remove
-                        </button>
-                      ) : null}
-                    </li>
-                  ))
-                ) : (
-                  <li>No one waiting</li>
-                )}
-              </ul>
-            </div>
-
-            {user ? (
-              // TODO(party-slots): Rename this to "Join End of Queue" and point it at
-              // POST /api/courts/:courtId/parties.
+      {!user ? (
+        <section className="sign-in-panel">
+          <h2>Sign in</h2>
+          <p>Use your UC San Diego Google account.</p>
+          {googleClientId ? <div ref={googleButtonRef} /> : <p>Google sign-in is not configured.</p>}
+        </section>
+      ) : (
+        <>
+          <nav className="gym-tabs" aria-label="Gym">
+            {["MAIN", "REC"].map((gymName) => (
               <button
-                disabled={busy === `join-${court.id}`}
-                onClick={() => handleJoin(court.id)}
+                className={gym === gymName ? "selected" : ""}
+                key={gymName}
+                onClick={() => setGym(gymName)}
                 type="button"
               >
-                {busy === `join-${court.id}` ? "Joining..." : `Queue For Court ${court.number}`}
+                {gymName === "MAIN" ? "Main Gym" : "Rec Gym"}
               </button>
-            ) : null}
+            ))}
+          </nav>
 
-            {adminControlsEnabled ? (
-              <div className="admin-actions">
-                <button
-                  disabled={busy === `rotate-${court.id}`}
-                  onClick={() => handleAdminAction(court.id, "rotate")}
-                  type="button"
-                >
-                  Rotate Now
-                </button>
-                <button
-                  disabled={busy === `toggle_pause-${court.id}`}
-                  onClick={() => handleAdminAction(court.id, "toggle_pause")}
-                  type="button"
-                >
-                  {court.paused ? "Resume" : "Pause"}
-                </button>
-              </div>
-            ) : null}
+          <section className="status" aria-live="polite">
+            {loading ? <p>Loading courts...</p> : null}
+            {notice ? <p className="notice">{notice}</p> : null}
+            {error ? <p className="error">{error}</p> : null}
+          </section>
 
-            {adminControlsEnabled ? (
-              <div className="dummy-row">
-                <input
-                  onChange={(event) =>
-                    setDummyNames((current) => ({ ...current, [court.id]: event.target.value }))
-                  }
-                  placeholder="Dummy player name"
-                  value={dummyNames[court.id] || ""}
-                />
-                <button
-                  disabled={busy === `add_dummy-${court.id}`}
-                  onClick={() => handleAdminAction(court.id, "add_dummy")}
-                  type="button"
-                >
-                  Add Dummy
-                </button>
-              </div>
-            ) : null}
-          </article>
-        ))}
-      </section>
+          <section className="grid">
+            {courts.map((court) => {
+              const shownPartyIds = new Set([
+                court.activeParty?.id,
+                ...court.queuedParties.map((party) => party.id),
+              ]);
+              const hiddenUserParty =
+                court.userParty && !shownPartyIds.has(court.userParty.id)
+                  ? court.userParty
+                  : null;
+
+              return (
+                <article className="court-card" key={court.id}>
+                  <div className="court-head">
+                    <div>
+                      <h2>Court {court.number}</h2>
+                      <p>{formatCountdown(court.lastRotatedAt, court.rotationMinutes)}</p>
+                    </div>
+                    <span className={`badge ${court.paused ? "paused" : "active"}`}>
+                      {court.paused ? "Paused" : "Running"}
+                    </span>
+                  </div>
+
+                  <section className="court-section">
+                    <div className="section-title">
+                      <h3>Playing</h3>
+                      <span>{court.activeParty ? `${4 - court.activeOpenSlots}/4` : "Open"}</span>
+                    </div>
+                    {court.activeParty ? (
+                      <PartyMembers
+                        adminEnabled={adminEnabled}
+                        busy={busy}
+                        onAdminRemove={(member) =>
+                          adminAction("remove_party_member", {
+                            partyId: court.activeParty.id,
+                            userId: member.userId,
+                          })
+                        }
+                        party={court.activeParty}
+                      />
+                    ) : (
+                      <p className="empty-state">No active party</p>
+                    )}
+                    {court.canJoinActiveCourt ? (
+                      <button
+                        disabled={busy === `active-${court.id}`}
+                        onClick={() => joinActive(court)}
+                      >
+                        Join active court
+                      </button>
+                    ) : null}
+                    {court.activeParty?.canLeave ? (
+                      <button
+                        className="secondary-button"
+                        disabled={busy === `leave-${court.activeParty.id}`}
+                        onClick={() => leaveParty(court.activeParty.id)}
+                      >
+                        Leave active court
+                      </button>
+                    ) : null}
+                    {adminEnabled && court.activeParty ? (
+                      <button
+                        className="danger-button"
+                        onClick={() =>
+                          adminAction("clear_active_court", {
+                            partyId: court.activeParty.id,
+                          })
+                        }
+                      >
+                        Clear active party
+                      </button>
+                    ) : null}
+                  </section>
+
+                  <section className="court-section">
+                    <div className="section-title">
+                      <h3>Queue</h3>
+                      <span>Top 5</span>
+                    </div>
+                    {court.queuedParties.length ? (
+                      <div className="party-list">
+                        {court.queuedParties.map((party) => (
+                          <div className="party-row" key={party.id}>
+                            <div className="party-heading">
+                              <strong>Party {party.position}</strong>
+                              <span>{party.members.length}/4</span>
+                            </div>
+                            <PartyMembers
+                              adminEnabled={adminEnabled}
+                              busy={busy}
+                              onAdminRemove={(member) =>
+                                adminAction("remove_party_member", {
+                                  partyId: party.id,
+                                  userId: member.userId,
+                                })
+                              }
+                              party={party}
+                            />
+                            <div className="row-actions">
+                              {party.canJoinParty || party.canSwitchToParty ? (
+                                <button
+                                  disabled={busy === `join-${party.id}`}
+                                  onClick={() => joinParty(party)}
+                                >
+                                  {party.canSwitchToParty ? "Switch here" : "Join party"}
+                                </button>
+                              ) : null}
+                              {party.canLeave ? (
+                                <button
+                                  className="secondary-button"
+                                  disabled={busy === `leave-${party.id}`}
+                                  onClick={() => leaveParty(party.id)}
+                                >
+                                  Leave
+                                </button>
+                              ) : null}
+                              {adminEnabled && party.canCancel ? (
+                                <button
+                                  className="danger-button"
+                                  onClick={() =>
+                                    adminAction("cancel_queued_party", { partyId: party.id })
+                                  }
+                                >
+                                  Delete party
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="empty-state">No parties waiting</p>
+                    )}
+
+                    {hiddenUserParty ? (
+                      <div className="your-party">
+                        <span>Your party is position {hiddenUserParty.position}</span>
+                        <button
+                          className="secondary-button"
+                          onClick={() => leaveParty(hiddenUserParty.id)}
+                        >
+                          Leave
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {court.canJoinNewParty || court.canSwitchToNewParty ? (
+                      <button
+                        disabled={busy === `create-${court.id}`}
+                        onClick={() => createParty(court)}
+                      >
+                        {court.canSwitchToNewParty ? "Switch to new party" : "Join end of queue"}
+                      </button>
+                    ) : null}
+                  </section>
+
+                  {adminEnabled ? (
+                    <div className="admin-actions">
+                      <button
+                        disabled={busy === `rotate-${court.id}`}
+                        onClick={() => adminAction("rotate", { courtId: court.id })}
+                      >
+                        Rotate now
+                      </button>
+                      <button
+                        className="secondary-button"
+                        disabled={busy === `toggle_pause-${court.id}`}
+                        onClick={() => adminAction("toggle_pause", { courtId: court.id })}
+                      >
+                        {court.paused ? "Resume" : "Pause"}
+                      </button>
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+          </section>
+        </>
+      )}
     </main>
+  );
+}
+
+function PartyMembers({ adminEnabled, busy, onAdminRemove, party }) {
+  return (
+    <ul className="member-list">
+      {party.members.map((member) => (
+        <li key={member.id}>
+          <span>
+            {member.displayName}
+            {member.isCurrentUser ? " (you)" : ""}
+          </span>
+          {adminEnabled && member.canAdminRemove ? (
+            <button
+              className="text-button"
+              disabled={busy === `remove_party_member-${party.id}`}
+              onClick={() => onAdminRemove(member)}
+              type="button"
+            >
+              Remove
+            </button>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 }

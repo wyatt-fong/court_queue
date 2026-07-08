@@ -1,46 +1,25 @@
 import { NextResponse } from "next/server";
 import { requireAdminUser } from "../../../lib/auth";
-import { adminAddDummy, adminRotateCourt, adminTogglePause } from "../../../lib/courts";
 import {
-  adminAddDemoDummy,
-  adminRotateDemoCourt,
-  adminToggleDemoPause,
-} from "../../../lib/demo-courts";
+  adminCancelParty,
+  adminRemovePartyMember,
+  adminRotatePartyCourt,
+  adminTogglePartyPause,
+} from "../../../lib/party-courts";
 
 export async function POST(request) {
   try {
-    // TODO(party-slots): Extend this route or split admin party endpoints for:
-    // cancel queued party, clear active court, and remove party member.
-    const { action, courtId, name } = await request.json();
+    const { action, courtId, partyId, userId } = await request.json();
     const user = await requireAdminUser();
 
-    if (user.is_demo) {
-        switch (action) {
-            case "rotate":
-                adminRotateDemoCourt(courtId);
-                break;
-            case "toggle_pause":
-                adminToggleDemoPause(courtId);
-                break;
-            case "add_dummy":
-                adminAddDemoDummy(courtId, name);
-                break;
-            case "remove_party_member":
-            case "clear_active_court":
-            case "cancel_queued_party":
-                return NextResponse.json(
-                { error: "Demo party admin action is not implemented yet." },
-                { status: 501 },
-            );
-            default:
-                return NextResponse.json({ error: "Unknown admin action for demo user." }, { status: 400 });
-        }
-    } else if (action === "rotate") {
-      await adminRotateCourt(courtId);
+    if (action === "rotate") {
+      await adminRotatePartyCourt(user, courtId);
     } else if (action === "toggle_pause") {
-      await adminTogglePause(courtId);
-    } else if (action === "add_dummy") {
-      await adminAddDummy(courtId, name);
+      await adminTogglePartyPause(user, courtId);
+    } else if (action === "remove_party_member") {
+      await adminRemovePartyMember(user, partyId, userId);
+    } else if (action === "clear_active_court" || action === "cancel_queued_party") {
+      await adminCancelParty(user, partyId);
     } else {
       return NextResponse.json({ error: "Unknown admin action." }, { status: 400 });
     }
