@@ -39,6 +39,7 @@ export default function HomePage() {
   const [gym, setGym] = useState("MAIN");
   const [courts, setCourts] = useState([]);
   const [adminMode, setAdminMode] = useState(false);
+  const [dummyName, setDummyName] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
@@ -186,6 +187,31 @@ export default function HomePage() {
     );
   }
 
+  async function createDummyPlayer(values) {
+    const displayName = dummyName.trim();
+
+    if (!displayName) {
+      setNotice("");
+      setError("Enter a dummy name first.");
+      return;
+    }
+
+    await refreshAfter(
+      `create_dummy_player-${values.partyId || values.courtId}`,
+      "Dummy player added.",
+      () =>
+        apiRequest("/api/admin", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "create_dummy_player",
+            displayName,
+            ...values,
+          }),
+        }),
+    );
+    setDummyName("");
+  }
+
   async function logout() {
     setBusy("logout");
     try {
@@ -258,6 +284,24 @@ export default function HomePage() {
             {error ? <p className="error">{error}</p> : null}
           </section>
 
+          {adminEnabled ? (
+            <section className="admin-test-panel" aria-label="Admin testing controls">
+              <div>
+                <h2>Admin testing</h2>
+                <p>Add one named dummy player to a party or new queue entry.</p>
+              </div>
+              <label>
+                Dummy name
+                <input
+                  maxLength={80}
+                  onChange={(event) => setDummyName(event.target.value)}
+                  placeholder="Guest player"
+                  value={dummyName}
+                />
+              </label>
+            </section>
+          ) : null}
+
           <section className="grid">
             {courts.map((court) => {
               const shownPartyIds = new Set([
@@ -270,15 +314,23 @@ export default function HomePage() {
                   : null;
 
               return (
-                <article className="court-card" key={court.id}>
+                <article
+                  className={`court-card ${court.queueDisabled ? "queue-disabled" : ""}`}
+                  key={court.id}
+                >
                   <div className="court-head">
                     <div>
                       <h2>Court {court.number}</h2>
                       <p>{formatCountdown(court.lastRotatedAt, court.rotationMinutes)}</p>
                     </div>
-                    <span className={`badge ${court.paused ? "paused" : "active"}`}>
-                      {court.paused ? "Paused" : "Running"}
-                    </span>
+                    <div className="badge-list">
+                      {court.queueDisabled ? (
+                        <span className="badge disabled">Queue closed</span>
+                      ) : null}
+                      <span className={`badge ${court.paused ? "paused" : "active"}`}>
+                        {court.paused ? "Paused" : "Running"}
+                      </span>
+                    </div>
                   </div>
 
                   <section className="court-section">
@@ -319,16 +371,27 @@ export default function HomePage() {
                       </button>
                     ) : null}
                     {adminEnabled && court.activeParty ? (
-                      <button
-                        className="danger-button"
-                        onClick={() =>
-                          adminAction("clear_active_court", {
-                            partyId: court.activeParty.id,
-                          })
-                        }
-                      >
-                        Clear active party
-                      </button>
+                      <div className="row-actions">
+                        {court.activeParty.openSlots > 0 && !court.queueDisabled ? (
+                          <button
+                            className="secondary-button"
+                            disabled={busy === `create_dummy_player-${court.activeParty.id}`}
+                            onClick={() => createDummyPlayer({ partyId: court.activeParty.id })}
+                          >
+                            Add dummy
+                          </button>
+                        ) : null}
+                        <button
+                          className="danger-button"
+                          onClick={() =>
+                            adminAction("clear_active_court", {
+                              partyId: court.activeParty.id,
+                            })
+                          }
+                        >
+                          Clear active party
+                        </button>
+                      </div>
                     ) : null}
                   </section>
 
@@ -375,14 +438,25 @@ export default function HomePage() {
                                 </button>
                               ) : null}
                               {adminEnabled && party.canCancel ? (
-                                <button
-                                  className="danger-button"
-                                  onClick={() =>
-                                    adminAction("cancel_queued_party", { partyId: party.id })
-                                  }
-                                >
-                                  Delete party
-                                </button>
+                                <>
+                                  {party.openSlots > 0 && !court.queueDisabled ? (
+                                    <button
+                                      className="secondary-button"
+                                      disabled={busy === `create_dummy_player-${party.id}`}
+                                      onClick={() => createDummyPlayer({ partyId: party.id })}
+                                    >
+                                      Add dummy
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    className="danger-button"
+                                    onClick={() =>
+                                      adminAction("cancel_queued_party", { partyId: party.id })
+                                    }
+                                  >
+                                    Delete party
+                                  </button>
+                                </>
                               ) : null}
                             </div>
                           </div>
@@ -402,6 +476,10 @@ export default function HomePage() {
                           Leave
                         </button>
                       </div>
+                    ) : null}
+
+                    {court.queueDisabled ? (
+                      <p className="empty-state">Queueing is disabled for this court.</p>
                     ) : null}
 
                     {court.canJoinNewParty || court.canSwitchToNewParty ? (
@@ -428,6 +506,22 @@ export default function HomePage() {
                         onClick={() => adminAction("toggle_pause", { courtId: court.id })}
                       >
                         {court.paused ? "Resume" : "Pause"}
+                      </button>
+                      <button
+                        className={court.queueDisabled ? "secondary-button" : "danger-button"}
+                        disabled={busy === `toggle_queue_disabled-${court.id}`}
+                        onClick={() => adminAction("toggle_queue_disabled", { courtId: court.id })}
+                      >
+                        {court.queueDisabled ? "Open queue" : "Close queue"}
+                      </button>
+                      <button
+                        className="secondary-button"
+                        disabled={
+                          court.queueDisabled || busy === `create_dummy_player-${court.id}`
+                        }
+                        onClick={() => createDummyPlayer({ courtId: court.id })}
+                      >
+                        New dummy party
                       </button>
                     </div>
                   ) : null}

@@ -15,6 +15,7 @@ create table if not exists public.courts (
   number integer not null unique,
   rotation_minutes integer not null default 15,
   paused boolean not null default false,
+  queue_disabled boolean not null default false,
   last_rotated_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );

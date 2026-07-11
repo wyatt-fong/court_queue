@@ -14,7 +14,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -141,6 +142,48 @@ p {
   margin-bottom: 1rem;
 }
 
+.admin-test-panel {
+  align-items: center;
+  background: white;
+  border: 1px solid #d8ddd7;
+  border-radius: 8px;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+}
+
+.admin-test-panel h2 {
+  font-size: 1rem;
+}
+
+.admin-test-panel p {
+  color: #687169;
+  font-size: 0.9rem;
+  margin-top: 0.2rem;
+}
+
+.admin-test-panel label {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.admin-test-panel input,
+.admin-test-panel select {
+  background: white;
+  border: 1px solid #aeb8b0;
+  border-radius: 6px;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.55rem;
+}
+
+.admin-test-panel input {
+  min-width: 12rem;
+}
+
 .notice,
 .error {
   border-left: 4px solid;
@@ -172,6 +215,10 @@ p {
   padding: 1rem;
 }
 
+.court-card.queue-disabled {
+  border-color: #c8bbb9;
+}
+
 .court-head p,
 .section-title span,
 .empty-state {
@@ -186,6 +233,14 @@ p {
   padding: 0.25rem 0.55rem;
 }
 
+.badge-list {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
 .badge.active {
   background: #dceee2;
   color: #24573f;
@@ -194,6 +249,11 @@ p {
 .badge.paused {
   background: #f2e4bd;
   color: #725b16;
+}
+
+.badge.disabled {
+  background: #f8e2df;
+  color: #9e302a;
 }
 
 .court-section {
@@ -271,5 +331,10 @@ p {
 
   .session-actions {
     justify-content: flex-start;
+  }
+
+  .admin-test-panel {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
