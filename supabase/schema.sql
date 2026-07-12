@@ -47,6 +47,11 @@ create table if not exists public.court_party_members (
   constraint court_party_members_unique_order_per_party unique (party_id, joined_order)
 );
 
+alter table public.users enable row level security;
+alter table public.courts enable row level security;
+alter table public.court_parties enable row level security;
+alter table public.court_party_members enable row level security;
+
 create index if not exists court_parties_court_status_position_idx
 on public.court_parties (court_id, status, position);
 
