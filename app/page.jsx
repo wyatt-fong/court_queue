@@ -38,6 +38,9 @@ export default function HomePage() {
   const [user, setUser] = useState(null);
   const [gym, setGym] = useState("MAIN");
   const [courts, setCourts] = useState([]);
+  const [expandedQueueCourtIds, setExpandedQueueCourtIds] = useState([]);
+  const [queueDetailsByCourtId, setQueueDetailsByCourtId] = useState({});
+  const [queueLoadingCourtId, setQueueLoadingCourtId] = useState("");
   const [adminMode, setAdminMode] = useState(false);
   const [dummyName, setDummyName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -50,6 +53,44 @@ export default function HomePage() {
     setCourts(data.courts);
   }
 
+  async function loadQueue(courtId, { force = false } = {}) {
+    if (!force && queueDetailsByCourtId[courtId]) return;
+
+    setQueueLoadingCourtId(courtId);
+    try {
+      const data = await apiRequest(`/api/courts/${courtId}/parties`);
+      setQueueDetailsByCourtId((currentDetails) => ({
+        ...currentDetails,
+        [courtId]: data,
+      }));
+    } finally {
+      setQueueLoadingCourtId((currentCourtId) =>
+        currentCourtId === courtId ? "" : currentCourtId,
+      );
+    }
+  }
+
+  async function refreshExpandedQueues() {
+    await Promise.all(
+      expandedQueueCourtIds.map((courtId) => loadQueue(courtId, { force: true })),
+    );
+  }
+
+  async function toggleQueue(courtId) {
+    if (expandedQueueCourtIds.includes(courtId)) {
+      setExpandedQueueCourtIds((courtIds) => courtIds.filter((id) => id !== courtId));
+      return;
+    }
+
+    setExpandedQueueCourtIds((courtIds) => [...courtIds, courtId]);
+    try {
+      await loadQueue(courtId);
+    } catch (requestError) {
+      setExpandedQueueCourtIds((courtIds) => courtIds.filter((id) => id !== courtId));
+      setError(requestError.message);
+    }
+  }
+
   async function refreshAfter(action, message, operation) {
     setBusy(action);
     setNotice("");
@@ -59,6 +100,7 @@ export default function HomePage() {
       await operation();
       setNotice(message);
       await loadCourts();
+      await refreshExpandedQueues();
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -68,9 +110,8 @@ export default function HomePage() {
 
   useEffect(() => {
     apiRequest("/api/auth/me")
-      .then(async ({ user: sessionUser }) => {
+      .then(({ user: sessionUser }) => {
         setUser(sessionUser);
-        if (sessionUser) await loadCourts("MAIN");
       })
       .catch((requestError) => setError(requestError.message))
       .finally(() => setLoading(false));
@@ -126,7 +167,6 @@ export default function HomePage() {
           });
           setUser(data.user);
           setNotice("Signed in.");
-          await loadCourts("MAIN");
         } catch (requestError) {
           setError(requestError.message);
         } finally {
@@ -270,7 +310,12 @@ export default function HomePage() {
               <button
                 className={gym === gymName ? "selected" : ""}
                 key={gymName}
-                onClick={() => setGym(gymName)}
+                onClick={() => {
+                  if (gymName === gym) return;
+                  setExpandedQueueCourtIds([]);
+                  setQueueDetailsByCourtId({});
+                  setGym(gymName);
+                }}
                 type="button"
               >
                 {gymName === "MAIN" ? "Main Gym" : "Rec Gym"}
@@ -304,12 +349,16 @@ export default function HomePage() {
 
           <section className="grid">
             {courts.map((court) => {
+              const queueDetails = queueDetailsByCourtId[court.id];
+              const queuedParties = queueDetails?.queuedParties ?? [];
+              const queueExpanded = expandedQueueCourtIds.includes(court.id);
+              const queueLoading = queueLoadingCourtId === court.id;
               const shownPartyIds = new Set([
                 court.activeParty?.id,
-                ...court.queuedParties.map((party) => party.id),
+                ...(queueExpanded ? queuedParties.map((party) => party.id) : []),
               ]);
               const hiddenUserParty =
-                court.userParty && !shownPartyIds.has(court.userParty.id)
+                court.userParty?.status === "queued" && !shownPartyIds.has(court.userParty.id)
                   ? court.userParty
                   : null;
 
@@ -398,11 +447,26 @@ export default function HomePage() {
                   <section className="court-section">
                     <div className="section-title">
                       <h3>Queue</h3>
-                      <span>Top 5</span>
+                      <span>
+                        {court.queuedPartyCount} {court.queuedPartyCount === 1 ? "party" : "parties"}
+                      </span>
                     </div>
-                    {court.queuedParties.length ? (
+                    <button
+                      className="secondary-button"
+                      disabled={queueLoading}
+                      onClick={() => toggleQueue(court.id)}
+                      type="button"
+                    >
+                      {queueExpanded ? "Hide queue" : "Show queue"}
+                    </button>
+
+                    {queueExpanded && queueLoading ? (
+                      <p className="empty-state">Loading queue...</p>
+                    ) : null}
+
+                    {queueExpanded && queuedParties.length ? (
                       <div className="party-list">
-                        {court.queuedParties.map((party) => (
+                        {queuedParties.map((party) => (
                           <div className="party-row" key={party.id}>
                             <div className="party-heading">
                               <strong>Party {party.position}</strong>
@@ -462,9 +526,11 @@ export default function HomePage() {
                           </div>
                         ))}
                       </div>
-                    ) : (
+                    ) : null}
+
+                    {queueExpanded && !queueLoading && !queuedParties.length ? (
                       <p className="empty-state">No parties waiting</p>
-                    )}
+                    ) : null}
 
                     {hiddenUserParty ? (
                       <div className="your-party">
