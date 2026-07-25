@@ -84,7 +84,7 @@ export default function HomePage() {
 
     setExpandedQueueCourtIds((courtIds) => [...courtIds, courtId]);
     try {
-      await loadQueue(courtId);
+      await loadQueue(courtId, { force: true });
     } catch (requestError) {
       setExpandedQueueCourtIds((courtIds) => courtIds.filter((id) => id !== courtId));
       setError(requestError.message);
@@ -466,6 +466,11 @@ export default function HomePage() {
 
                     {queueExpanded && queuedParties.length ? (
                       <div className="party-list">
+                        {queuedParties.length !== court.queuedPartyCount ? (
+                          <p className="empty-state">
+                            Showing {queuedParties.length} of {court.queuedPartyCount} parties
+                          </p>
+                        ) : null}
                         {queuedParties.map((party) => (
                           <div className="party-row" key={party.id}>
                             <div className="party-heading">
