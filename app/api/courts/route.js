@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSessionUser } from "../../../lib/auth";
 import {
   fetchPartyCourtsForUser,
-  rotateDuePartyCourts,
+  maybeRotateDuePartyCourts,
 } from "../../../lib/party-courts";
 
 export async function GET(request) {
@@ -10,7 +10,7 @@ export async function GET(request) {
     const user = await requireSessionUser();
     const gym = request.nextUrl.searchParams.get("gym") || "MAIN";
 
-    await rotateDuePartyCourts();
+    await maybeRotateDuePartyCourts();
     const result = await fetchPartyCourtsForUser(user, gym);
 
     return NextResponse.json(result);

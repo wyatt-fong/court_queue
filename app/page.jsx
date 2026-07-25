@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+const COURT_REFRESH_INTERVAL_MS = 30000;
 
 async function apiRequest(path, init) {
   const response = await fetch(path, {
@@ -123,9 +124,20 @@ export default function HomePage() {
     loadCourts(gym).catch((requestError) => setError(requestError.message));
     const interval = window.setInterval(() => {
       loadCourts(gym).catch(() => {});
-    }, 10000);
+    }, COURT_REFRESH_INTERVAL_MS);
 
-    return () => window.clearInterval(interval);
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        loadCourts(gym).catch(() => {});
+      }
+    }
+
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [gym, user]);
 
   useEffect(() => {
