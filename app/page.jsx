@@ -36,6 +36,12 @@ function formatCountdown(lastRotatedAt, rotationMinutes, now) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+function formatCourtTimer(court, now) {
+  if (!court.activeParty) return "Open";
+
+  return formatCountdown(court.lastRotatedAt, court.rotationMinutes, now);
+}
+
 export default function HomePage() {
   const googleButtonRef = useRef(null);
   const googleInitializedRef = useRef(false);
@@ -163,6 +169,7 @@ export default function HomePage() {
     if (!user || document.visibilityState !== "visible") return;
 
     for (const court of courts) {
+      if (!court.activeParty) continue;
       if (court.paused || court.queueDisabled) continue;
 
       const nextRotationTime = getNextRotationTime(court.lastRotatedAt, court.rotationMinutes);
@@ -418,7 +425,7 @@ export default function HomePage() {
                   <div className="court-head">
                     <div>
                       <h2>Court {court.number}</h2>
-                      <p>{formatCountdown(court.lastRotatedAt, court.rotationMinutes, now)}</p>
+                      <p>{formatCourtTimer(court, now)}</p>
                     </div>
                     <div className="badge-list">
                       {court.queueDisabled ? (
