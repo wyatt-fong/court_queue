@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
-const COURT_REFRESH_INTERVAL_MS = 30000;
+const READY_REFRESH_COOLDOWN_MS = 5000;
 
 async function apiRequest(path, init) {
   const response = await fetch(path, {
@@ -22,9 +22,13 @@ async function apiRequest(path, init) {
   return body;
 }
 
-function formatCountdown(lastRotatedAt, rotationMinutes) {
+function getNextRotationTime(lastRotatedAt, rotationMinutes) {
+  return new Date(lastRotatedAt).getTime() + rotationMinutes * 60 * 1000;
+}
+
+function formatCountdown(lastRotatedAt, rotationMinutes, now) {
   const nextRotation = new Date(lastRotatedAt).getTime() + rotationMinutes * 60 * 1000;
-  const difference = nextRotation - Date.now();
+  const difference = nextRotation - now;
 
   if (difference <= 0) return "Ready";
 
@@ -35,10 +39,12 @@ function formatCountdown(lastRotatedAt, rotationMinutes) {
 export default function HomePage() {
   const googleButtonRef = useRef(null);
   const googleInitializedRef = useRef(false);
+  const readyRefreshesRef = useRef({});
   const [googleReady, setGoogleReady] = useState(false);
   const [user, setUser] = useState(null);
   const [gym, setGym] = useState("MAIN");
   const [courts, setCourts] = useState([]);
+  const [now, setNow] = useState(Date.now());
   const [expandedQueueCourtIds, setExpandedQueueCourtIds] = useState([]);
   const [queueDetailsByCourtId, setQueueDetailsByCourtId] = useState({});
   const [queueLoadingCourtId, setQueueLoadingCourtId] = useState("");
@@ -52,6 +58,17 @@ export default function HomePage() {
   async function loadCourts(nextGym = gym) {
     const data = await apiRequest(`/api/courts?gym=${nextGym}`);
     setCourts(data.courts);
+  }
+
+  async function refreshCourt(courtId) {
+    const data = await apiRequest(`/api/courts/${courtId}`);
+    setCourts((currentCourts) =>
+      currentCourts.map((court) => (court.id === courtId ? data.court : court)),
+    );
+
+    if (expandedQueueCourtIds.includes(courtId)) {
+      await loadQueue(courtId, { force: true });
+    }
   }
 
   async function loadQueue(courtId, { force = false } = {}) {
@@ -122,9 +139,6 @@ export default function HomePage() {
     if (!user) return undefined;
 
     loadCourts(gym).catch((requestError) => setError(requestError.message));
-    const interval = window.setInterval(() => {
-      loadCourts(gym).catch(() => {});
-    }, COURT_REFRESH_INTERVAL_MS);
 
     function refreshWhenVisible() {
       if (document.visibilityState === "visible") {
@@ -135,10 +149,32 @@ export default function HomePage() {
     document.addEventListener("visibilitychange", refreshWhenVisible);
 
     return () => {
-      window.clearInterval(interval);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [gym, user]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!user || document.visibilityState !== "visible") return;
+
+    for (const court of courts) {
+      if (court.paused || court.queueDisabled) continue;
+
+      const nextRotationTime = getNextRotationTime(court.lastRotatedAt, court.rotationMinutes);
+      if (nextRotationTime > now) continue;
+
+      const lastRefreshAt = readyRefreshesRef.current[court.id] ?? 0;
+      if (now - lastRefreshAt < READY_REFRESH_COOLDOWN_MS) continue;
+
+      readyRefreshesRef.current[court.id] = now;
+      refreshCourt(court.id).catch(() => {});
+    }
+  }, [courts, now, user]);
 
   useEffect(() => {
     if (user || !googleClientId) return undefined;
@@ -382,7 +418,7 @@ export default function HomePage() {
                   <div className="court-head">
                     <div>
                       <h2>Court {court.number}</h2>
-                      <p>{formatCountdown(court.lastRotatedAt, court.rotationMinutes)}</p>
+                      <p>{formatCountdown(court.lastRotatedAt, court.rotationMinutes, now)}</p>
                     </div>
                     <div className="badge-list">
                       {court.queueDisabled ? (
