@@ -6,7 +6,7 @@ export async function POST(request) {
     const { idToken } = await request.json();
 
     if (!idToken) {
-      return NextResponse.json({ error: "Google ID token is required." }, { status: 400 });
+      return NextResponse.json({ error: "Google ID token is required." }, { status: 401 });
     }
 
     const googleProfile = await verifyGoogleIdToken(idToken);

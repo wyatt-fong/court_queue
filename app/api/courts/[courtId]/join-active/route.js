@@ -11,7 +11,7 @@ export async function POST(_request, { params }) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const status = error.message === "Authentication required." ? 401 : 400;
+    const status = error.message === "Authentication required." ? 401 : 404;
     return NextResponse.json({ error: error.message }, { status });
   }
 }

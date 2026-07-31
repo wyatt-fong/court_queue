@@ -27,7 +27,7 @@ export async function POST(request) {
     } else if (action === "clear_active_court" || action === "cancel_queued_party") {
       await adminCancelParty(user, partyId);
     } else {
-      return NextResponse.json({ error: "Unknown admin action." }, { status: 400 });
+      return NextResponse.json({ error: "Unknown admin action." }, { status: 404 });
     }
 
     return NextResponse.json({ ok: true });
